@@ -1,0 +1,148 @@
+##### EJEMPLO DE IMPUTACIÓN DE INGRESOS: BASE 1T 2005 #####
+#Librerías
+pacman::p_load(tidyverse,foreign,ggplot2,viridis,
+               hrbrthemes, fastDummies)
+### UNIÓN DE LAS BASES ###
+# Bases a unir
+# Disponibles en: https://www.inegi.org.mx/programas/enoe/15ymas/#microdatos
+sdemt <- read.csv("ENOE_SDEMT120.csv",header=T)
+CO1<- read.csv("ENOE_COE1T120.csv",header=T)
+CO2<- read.csv("ENOE_COE2T120.csv",header=T)
+
+sdemt2 <- sdemt %>%
+  filter(
+    eda >= 12,            # personas mayores de 12 años
+    eda != 99,
+    c_res %in% c(1, 3),  # residentes habituales o temporales
+    r_def == 0 # entrevista completa
+  )
+
+# Llanves para la unión 
+#Llave cuestionario Sociodemográfico
+sdemt2 <- sdemt2 %>%
+  mutate(llave = paste(cd_a, ent, con, v_sel, n_hog, h_mud, n_ren, sep="_"))
+summary(duplicated(sdemt2$llave))
+
+#Llave COE1
+CO1 <- CO1 %>%
+  mutate(llave = paste(cd_a, ent, con, v_sel, n_hog, h_mud, n_ren, sep="_"))
+summary(duplicated(CO1$llave))
+
+#Llave COE2
+CO2 <- CO2 %>%
+  mutate(llave = paste(cd_a, ent, con, v_sel, n_hog, h_mud, n_ren, sep = "_"))
+summary(duplicated(CO2$llave))
+
+# Paso 1: Unir sdemt con CO1 usando la variable 'llave'
+base_completa <- merge(sdemt2, CO1, by = "llave", all.x = TRUE)
+
+# Paso 2: Unir el resultado con CO2
+base_completa <- merge(base_completa, CO2, by = "llave", all.x = TRUE)
+
+
+### GUARDAR ###
+
+### MODIFICAR BASES CON VARIBLES QUE SE UTILIZARÁN PARA LA IMPUTACIÓN ###
+#Definir en directorio base unida en el paso anterior
+
+# Aplicar Filtros Iniciales
+datos <- datos %>%
+  filter(eda >= 15 & eda <= 98) %>%
+  filter((pos_ocu == 1 | pos_ocu == 2 | pos_ocu == 3) & 
+           hrsocup >= 1 & is.na(p6_9) & is.na(p6a3))
+
+# Creación de variables 
+datos <- datos %>%
+  mutate(
+    # Grupos de edad
+    grupo_edad = case_when(
+      eda >= 15 & eda <= 19 ~ "15 a 19 años",
+      eda >= 20 & eda <= 24 ~ "20 a 24 años",
+      eda >= 25 & eda <= 29 ~ "25 a 29 años",
+      eda >= 30 & eda <= 34 ~ "30 a 34 años",
+      eda >= 35 & eda <= 39 ~ "35 a 39 años",
+      eda >= 40 & eda <= 44 ~ "40 a 44 años",
+      eda >= 45 & eda <= 49 ~ "45 a 49 años",
+      eda >= 50 & eda <= 54 ~ "50 a 54 años",
+      eda >= 55 & eda <= 59 ~ "55 a 59 años",
+      eda >= 60 & eda <= 64 ~ "60 a 64 años", 
+      eda >= 65 & eda <= 69 ~ "65 a 69 años", 
+      eda >= 70 ~ "70 años y mas",           
+      TRUE ~ "Revisar/No Aplica"
+    ),
+    # Tipo de localidad
+    tipo_loc = case_when(
+      t_loc == 4 ~ "rural",
+      t_loc %in% c(1, 2, 3) ~ "urbana"
+    ),
+    # Situación de empleo
+    sit_empleo = case_when(
+      emp_ppal == 1 ~ "informal", 
+      emp_ppal == 2 ~ "formal"
+    ),
+    # Jornada laboral
+    jornada_laboral = case_when(
+      dur9c %in% c(2, 3, 4) ~ "incompleta",  
+      dur9c %in% c(5, 6, 7, 8) ~ "completa", 
+      dur9c == 1 ~ "ausente temporal",
+      dur9c == 9 ~ "no especificado",  
+      TRUE ~ "revisar/no Aplica"
+    ),
+    # Escolaridad
+    escolaridad = case_when(
+      niv_ins == 1 ~ "primaria incompleta",
+      niv_ins == 2 ~ "primaria completa",
+      niv_ins == 3 ~ "secundaria completa",
+      cs_p13_1 == 4 ~ "preparatoria completa",
+      cs_p13_1 %in% c(7, 8, 9) ~ "profesional o mas"
+    )
+  )
+
+#Convertir a factores
+datos$grupo_edad <- factor(datos$grupo_edad, levels = c(
+  "15 a 19 años", "20 a 24 años", "25 a 29 años", "30 a 34 años",
+  "35 a 39 años", "40 a 44 años", "45 a 49 años", "50 a 54 años",
+  "55 a 59 años", "60 a 64 años", "65 a 69 años", "70 años y mas"
+), ordered = TRUE)
+
+datos$tipo_loc <- factor(datos$tipo_loc, levels = c("rural", "urbana"))
+
+datos$sit_empleo <- factor(datos$sit_empleo, levels = c("informal", "formal"))
+
+datos$jornada_laboral <- factor(datos$jornada_laboral, levels = c(
+  "incompleta", "completa", "ausente temporal", "no especificado", "revisar/no Aplica"
+))
+
+datos$escolaridad <- factor(datos$escolaridad, levels = c(
+  "primaria incompleta", "primaria completa", "secundaria completa", 
+  "preparatoria completa", "profesional o mas"
+), ordered = TRUE)
+
+### GUARDAR ###
+
+# IMPUTACIÓN DE INGRESOS FALTANTES 
+
+library(VIM)
+# Crear variable para imputar
+datos$imputacion <- datos$p6b2
+
+# Ejecutar Hot-deck 
+
+datos <- hotdeck(
+  datos,
+  variable = "imputacion",
+  domain_var = c("grupo_edad", "tipo_loc", "sit_empleo", 
+                 "jornada_laboral", "escolaridad", 
+                 "sex")
+)
+
+# Crear variable de ingreso final
+datos <- datos %>%
+  mutate(
+    ingreso_imp = case_when(
+      ing7c %in% c(1, 2, 3, 4, 5, 7) ~ imputacion,
+      TRUE ~ p6b2
+    )
+  )
+
+### GUARDAR ###
