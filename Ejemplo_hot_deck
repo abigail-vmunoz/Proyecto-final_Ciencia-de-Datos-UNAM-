@@ -5,9 +5,9 @@ pacman::p_load(tidyverse,foreign,ggplot2,viridis,
 ### UNIÓN DE LAS BASES ###
 # Bases a unir
 # Disponibles en: https://www.inegi.org.mx/programas/enoe/15ymas/#microdatos
-sdemt <- read.csv("ENOE_SDEMT120.csv",header=T)
-CO1<- read.csv("ENOE_COE1T120.csv",header=T)
-CO2<- read.csv("ENOE_COE2T120.csv",header=T)
+sdemt <- read.csv("ENOE_SDEMT105.csv",header=T)
+CO1<- read.csv("ENOE_COE1T105.csv",header=T)
+CO2<- read.csv("ENOE_COE2T105.csv",header=T)
 
 sdemt2 <- sdemt %>%
   filter(
